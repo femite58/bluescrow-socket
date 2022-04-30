@@ -118,11 +118,11 @@ io.on("connection", (socket) => {
                     if (message.notification) {
                         io.to(message.receiver).emit(
                             "notifications",
-                            ret.receiver_notification
+                            ret.receiver_notification || []
                         );
                     }
                     if (message.admin_notification) {
-                        io.to("admin").emit("notifications", ret.admin_notification);
+                        io.to("admin").emit("notifications", ret.admin_notification || []);
                     }
                     io.to(`dispute${message.escrow_id}`).emit("messages", {
                         chats: ret.chats,
@@ -164,7 +164,7 @@ io.on("connection", (socket) => {
                             io.to(`dispute${disp.escrow.id}`).emit("messages", disp);
                         }
                     }
-                    socket.emit("notifications", ret.notification);
+                    socket.emit("notifications", ret.notification || []);
                 } catch (e) {
                     console.log(e);
                 }
@@ -206,7 +206,7 @@ io.on("connection", (socket) => {
                 try {
                     let ret = JSON.parse(str).data;
                     socket.emit("escrowSingle", ret);
-                    io.to(user.username).emit("notifications", ret.notifications);
+                    io.to(user.username).emit("notifications", ret.notifications || []);
                 } catch (e) {
                     console.log(e);
                 }
@@ -214,7 +214,7 @@ io.on("connection", (socket) => {
         });
         req.on("error", (e) => {
             console.log(e);
-            socket.emit('escrowSingle', JSON.stringify(e));
+            socket.emit("escrowSingle", JSON.stringify(e));
         });
         req.end();
     });
@@ -237,7 +237,7 @@ io.on("connection", (socket) => {
                 try {
                     let ret = JSON.parse(str).data;
                     socket.emit("escrow", ret.escrow);
-                    io.to(ret.escrow.receiver).emit("notifications", ret.notification);
+                    io.to(ret.escrow.receiver).emit("notifications", ret.notification || []);
                 } catch (e) {
                     console.log(e);
                 }
@@ -246,6 +246,7 @@ io.on("connection", (socket) => {
         req.write(escrow);
         req.on("error", (e) => {
             console.log(e);
+            socket.emit("escrow", e.error);
         });
         req.end();
     });
@@ -267,8 +268,8 @@ io.on("connection", (socket) => {
                 console.log(str);
                 try {
                     let ret = JSON.parse(str).data;
-                    io.to(`escSingle${ret.escrow.id}`).emit('escrowSingle', ret);
-                    io.to(ret.escrow.buyer).emit("notifications", ret.notification);
+                    io.to(`escSingle${ret.escrow.id}`).emit("escrowSingle", ret);
+                    io.to(ret.escrow.buyer).emit("notifications", ret.notification || []);
                 } catch (e) {
                     console.log(e);
                 }
@@ -299,11 +300,11 @@ io.on("connection", (socket) => {
                 try {
                     let ret = JSON.parse(str).data;
                     socket.emit("escDeliveryResp", {...ret });
-                    io.to(`escSingle${ret.escrow.id}`).emit('escrowSingle', ret);
+                    io.to(`escSingle${ret.escrow.id}`).emit("escrowSingle", ret);
                     if (user.username == ret.escrow.buyer) {
-                        io.to(ret.escrow.seller).emit("notifications", ret.notification);
+                        io.to(ret.escrow.seller).emit("notifications", ret.notification || []);
                     } else {
-                        io.to(ret.escrow.buyer).emit("notifications", ret.notification);
+                        io.to(ret.escrow.buyer).emit("notifications", ret.notification || []);
                     }
                 } catch (e) {
                     console.log(e);
@@ -334,8 +335,8 @@ io.on("connection", (socket) => {
                 try {
                     let ret = JSON.parse(str).data;
                     // socket.emit("cancelTimeRes", ret.escrow);
-                    io.to(`escSingle${ret.escrow.id}`).emit('escrowSingle', ret);
-                    io.to(ret.escrow.buyer).emit("notifications", ret.notification);
+                    io.to(`escSingle${ret.escrow.id}`).emit("escrowSingle", ret);
+                    io.to(ret.escrow.buyer).emit("notifications", ret.notification || []);
                 } catch (e) {
                     console.log(e);
                 }
@@ -364,8 +365,8 @@ io.on("connection", (socket) => {
                 try {
                     let ret = JSON.parse(str).data;
                     // socket.emit("acceptTimeRes", ret.escrow);
-                    io.to(`escSingle${ret.escrow.id}`).emit('escrowSingle', ret);
-                    io.to(ret.escrow.seller).emit("notifications", ret.notification);
+                    io.to(`escSingle${ret.escrow.id}`).emit("escrowSingle", ret);
+                    io.to(ret.escrow.seller).emit("notifications", ret.notification || []);
                 } catch (e) {
                     console.log(e);
                 }
@@ -394,11 +395,11 @@ io.on("connection", (socket) => {
                 try {
                     let ret = JSON.parse(str).data;
                     socket.emit("escActionRes", ret);
-                    io.to(`escSingle${ret.escrow.id}`).emit('escrowSingle', ret);
+                    io.to(`escSingle${ret.escrow.id}`).emit("escrowSingle", ret);
                     if (role != "cancelled") {
-                        io.to(ret.escrow.initiator).emit("notifications", ret.notification);
+                        io.to(ret.escrow.initiator).emit("notifications", ret.notification || []);
                     } else {
-                        io.to(ret.escrow.receiver).emit("notifications", ret.notification);
+                        io.to(ret.escrow.receiver).emit("notifications", ret.notification || []);
                     }
                 } catch (e) {
                     console.log(e);
@@ -440,7 +441,7 @@ io.on("connection", (socket) => {
                     } else {
                         io.to(`dispute${dispId}`).emit("messages", ret);
                     }
-                    io.to(user.username).emit("notifications", ret.notifcation);
+                    io.to(user.username).emit("notifications", ret.notifcation || []);
                 } catch (e) {
                     console.log(e);
                 }
@@ -474,12 +475,12 @@ io.on("connection", (socket) => {
                     if (user.username == ret.escrow.buyer) {
                         io.to(ret.escrow.seller).emit(
                             "notifications",
-                            ret.receiver_notification
+                            ret.receiver_notification || []
                         );
                     } else {
                         io.to(ret.escrow.buyer).emit(
                             "notifications",
-                            ret.receiver_notification
+                            ret.receiver_notification || []
                         );
                     }
                 } catch (e) {
