@@ -118,11 +118,11 @@ io.on("connection", (socket) => {
                     if (message.notification) {
                         io.to(message.receiver).emit(
                             "notifications",
-                            ret.receiver_notification || []
+                            ret.receiver_notification
                         );
                     }
                     if (message.admin_notification) {
-                        io.to("admin").emit("notifications", ret.admin_notification || []);
+                        io.to("admin").emit("notifications", ret.admin_notification);
                     }
                     io.to(`dispute${message.escrow_id}`).emit("messages", {
                         chats: ret.chats,
@@ -164,7 +164,7 @@ io.on("connection", (socket) => {
                             io.to(`dispute${disp.escrow.id}`).emit("messages", disp);
                         }
                     }
-                    socket.emit("notifications", ret.notification || []);
+                    socket.emit("notifications", ret.notification);
                 } catch (e) {
                     console.log(e);
                 }
@@ -206,7 +206,7 @@ io.on("connection", (socket) => {
                 try {
                     let ret = JSON.parse(str).data;
                     socket.emit("escrowSingle", ret);
-                    io.to(user.username).emit("notifications", ret.notifications || []);
+                    io.to(user.username).emit("notifications", ret.notifications);
                 } catch (e) {
                     console.log(e);
                 }
@@ -237,7 +237,7 @@ io.on("connection", (socket) => {
                 try {
                     let ret = JSON.parse(str).data;
                     socket.emit("escrow", ret.escrow);
-                    io.to(ret.escrow.receiver).emit("notifications", ret.notification || []);
+                    io.to(ret.escrow.receiver).emit("notifications", ret.notification);
                 } catch (e) {
                     console.log(e);
                 }
@@ -269,7 +269,7 @@ io.on("connection", (socket) => {
                 try {
                     let ret = JSON.parse(str).data;
                     io.to(`escSingle${ret.escrow.id}`).emit("escrowSingle", ret);
-                    io.to(ret.escrow.buyer).emit("notifications", ret.notification || []);
+                    io.to(ret.escrow.buyer).emit("notifications", ret.notification);
                 } catch (e) {
                     console.log(e);
                 }
@@ -302,9 +302,9 @@ io.on("connection", (socket) => {
                     socket.emit("escDeliveryResp", {...ret });
                     io.to(`escSingle${ret.escrow.id}`).emit("escrowSingle", ret);
                     if (user.username == ret.escrow.buyer) {
-                        io.to(ret.escrow.seller).emit("notifications", ret.notification || []);
+                        io.to(ret.escrow.seller).emit("notifications", ret.notification);
                     } else {
-                        io.to(ret.escrow.buyer).emit("notifications", ret.notification || []);
+                        io.to(ret.escrow.buyer).emit("notifications", ret.notification);
                     }
                 } catch (e) {
                     console.log(e);
@@ -336,7 +336,7 @@ io.on("connection", (socket) => {
                     let ret = JSON.parse(str).data;
                     // socket.emit("cancelTimeRes", ret.escrow);
                     io.to(`escSingle${ret.escrow.id}`).emit("escrowSingle", ret);
-                    io.to(ret.escrow.buyer).emit("notifications", ret.notification || []);
+                    io.to(ret.escrow.buyer).emit("notifications", ret.notification);
                 } catch (e) {
                     console.log(e);
                 }
@@ -366,7 +366,7 @@ io.on("connection", (socket) => {
                     let ret = JSON.parse(str).data;
                     // socket.emit("acceptTimeRes", ret.escrow);
                     io.to(`escSingle${ret.escrow.id}`).emit("escrowSingle", ret);
-                    io.to(ret.escrow.seller).emit("notifications", ret.notification || []);
+                    io.to(ret.escrow.seller).emit("notifications", ret.notification);
                 } catch (e) {
                     console.log(e);
                 }
@@ -397,9 +397,9 @@ io.on("connection", (socket) => {
                     socket.emit("escActionRes", ret);
                     io.to(`escSingle${ret.escrow.id}`).emit("escrowSingle", ret);
                     if (role != "cancelled") {
-                        io.to(ret.escrow.initiator).emit("notifications", ret.notification || []);
+                        io.to(ret.escrow.initiator).emit("notifications", ret.notification);
                     } else {
-                        io.to(ret.escrow.receiver).emit("notifications", ret.notification || []);
+                        io.to(ret.escrow.receiver).emit("notifications", ret.notification);
                     }
                 } catch (e) {
                     console.log(e);
@@ -441,7 +441,7 @@ io.on("connection", (socket) => {
                     } else {
                         io.to(`dispute${dispId}`).emit("messages", ret);
                     }
-                    io.to(user.username).emit("notifications", ret.notifcation || []);
+                    io.to(user.username).emit("notifications", ret.notification);
                 } catch (e) {
                     console.log(e);
                 }
@@ -452,6 +452,10 @@ io.on("connection", (socket) => {
             socket.emit("messages", "Unauthorized");
         });
         req.end();
+    });
+
+    socket.on("typingTrigger", (dispId, msg, username) => {
+        io.to(`dispute${dispId}`).emit("isTyping", { user: username, typing: msg });
     });
 
     socket.on("closeDispute", (dispId, user) => {
@@ -475,12 +479,12 @@ io.on("connection", (socket) => {
                     if (user.username == ret.escrow.buyer) {
                         io.to(ret.escrow.seller).emit(
                             "notifications",
-                            ret.receiver_notification || []
+                            ret.receiver_notification
                         );
                     } else {
                         io.to(ret.escrow.buyer).emit(
                             "notifications",
-                            ret.receiver_notification || []
+                            ret.receiver_notification
                         );
                     }
                 } catch (e) {
@@ -495,7 +499,11 @@ io.on("connection", (socket) => {
     });
 
     socket.on("leaveroom", (dispId, user) => {
-        leaveRoom(`dispute${dispId}`, user.username, socket.id);
+        if (user) {
+            leaveRoom(`dispute${dispId}`, user.username, socket.id);
+        } else {
+            leaveAllRooms(socket.id);
+        }
     });
 
     socket.on("disconnect", () => {
