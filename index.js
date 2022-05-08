@@ -124,8 +124,8 @@ io.on("connection", (socket) => {
                     if (message.admin_notification) {
                         io.to("admin").emit("notifications", ret.admin_notification);
                     }
-                    io.to(`dispute${message.escrow_id}`).emit("messages", {
-                        chats: ret.chats,
+                    io.to(`dispute${message.escrow_id}`).emit("sentMsg", {
+                        message: ret.message,
                         escrow: ret.escrow,
                     });
                 } catch (e) {
