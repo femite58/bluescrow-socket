@@ -417,7 +417,7 @@ io.on("connection", (socket) => {
         const options = {
             host: api,
             port: apiPort,
-            path: `${thePath}/user/disputes/single/${dispId}`,
+            path: `${thePath}/user/disputes/single/${dispId}/10/1`,
             headers: { "Api-Token": user.token },
         };
         const req = https.request(options, (res) => {
