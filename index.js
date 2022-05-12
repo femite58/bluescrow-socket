@@ -474,7 +474,7 @@ io.on("connection", (socket) => {
                 console.log(str);
                 try {
                     let ret = JSON.parse(str).data;
-                    socket.emit("closeDispResp", "closed");
+                    io.to(`dispute${dispId}`).emit("closeDispResp", "closed");
                     io.to(`dispute${dispId}`).emit("messages", ret);
                     if (user.username == ret.escrow.buyer) {
                         io.to(ret.escrow.seller).emit(
