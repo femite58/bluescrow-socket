@@ -348,11 +348,11 @@ io.on("connection", (socket) => {
         req.end();
     });
 
-    socket.on("acceptTime", (id, user) => {
+    socket.on("acceptTime", (id, user, role) => {
         const options = {
             host: api,
             port: apiPort,
-            path: `${thePath}/user/escrow/approve-duration/${id}`,
+            path: `${thePath}/user/escrow/approve-duration/${id}/${role}`,
             headers: { "Api-Token": user.token },
         };
         const req = https.request(options, (res) => {
