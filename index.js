@@ -27,7 +27,6 @@ app.post("/payment", (req, res) => {
   res
     .writeHead(200, {
       "Content-Type": "application/json",
-      "Access-Control-Allow-Origin": "*",
     })
     .end(JSON.stringify({ data: "success" }));
 });
