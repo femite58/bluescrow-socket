@@ -10,20 +10,16 @@ const io = require("socket.io")(httpServer, {
 app.use(express.json());
 app.use(cors({ origin: "*", allowedHeaders: "Content-Type" }));
 
-// app.use(express.urlencoded({ extended: false }));
-
 const port = process.env.PORT || 3000;
 
 let rooms = {};
 const api = "api.bluescrow.com";
 const thePath = "/api";
 const apiPort = 443;
-let globSocket;
 
 app.post("/payment", (req, res) => {
-  console.log("url successfully accessed");
   let data = req.body;
-  globSocket.to(data.username).emit("deposit", data.amount);
+  io.to(data.username).emit("deposit", data.data);
   res
     .writeHead(200, {
       "Content-Type": "application/json",
@@ -32,14 +28,12 @@ app.post("/payment", (req, res) => {
 });
 
 io.on("connection", (socket) => {
-  globSocket = socket;
   console.log("a user connected");
   let prevRmId;
 
   const joinRoom = (rmid, user, socketId) => {
     socket.leave(prevRmId);
     socket.join(rmid);
-    console.log(rooms);
     let exist = rooms[rmid]
       ? rooms[rmid].find((each) => each == `${user},${socketId}`)
       : null;
@@ -135,7 +129,6 @@ io.on("connection", (socket) => {
         str += data;
       });
       res.on("end", () => {
-        console.log(str);
         try {
           let ret = JSON.parse(str).data;
           if (message.notification) {
@@ -177,7 +170,6 @@ io.on("connection", (socket) => {
         str += data;
       });
       res.on("end", () => {
-        console.log(str);
         try {
           let ret = JSON.parse(str).data;
           let disputes = ret.disputes;
@@ -225,7 +217,6 @@ io.on("connection", (socket) => {
         str += data;
       });
       res.on("end", () => {
-        console.log(str);
         try {
           let ret = JSON.parse(str).data;
           socket.emit("escrowSingle", ret);
@@ -256,7 +247,6 @@ io.on("connection", (socket) => {
         str += data;
       });
       res.on("end", () => {
-        console.log(str);
         try {
           let ret = JSON.parse(str).data;
           socket.emit("escrow", ret.escrow);
@@ -288,7 +278,6 @@ io.on("connection", (socket) => {
         str += data;
       });
       res.on("end", () => {
-        console.log(str);
         try {
           let ret = JSON.parse(str).data;
           io.to(`escSingle${ret.escrow.id}`).emit("escrowSingle", ret);
@@ -319,7 +308,6 @@ io.on("connection", (socket) => {
         str += data;
       });
       res.on("end", () => {
-        console.log(str);
         try {
           let ret = JSON.parse(str).data;
           socket.emit("escDeliveryResp", { ...ret });
@@ -354,7 +342,6 @@ io.on("connection", (socket) => {
         str += data;
       });
       res.on("end", () => {
-        console.log(str);
         try {
           let ret = JSON.parse(str).data;
           // socket.emit("cancelTimeRes", ret.escrow);
@@ -384,7 +371,6 @@ io.on("connection", (socket) => {
         str += data;
       });
       res.on("end", () => {
-        console.log(str);
         try {
           let ret = JSON.parse(str).data;
           // socket.emit("acceptTimeRes", ret.escrow);
@@ -414,7 +400,6 @@ io.on("connection", (socket) => {
         str += data;
       });
       res.on("end", () => {
-        console.log(str);
         try {
           let ret = JSON.parse(str).data;
           socket.emit("escActionRes", ret);
@@ -449,7 +434,6 @@ io.on("connection", (socket) => {
         str += data;
       });
       res.on("end", () => {
-        console.log(str);
         try {
           let ret = JSON.parse(str).data;
           if (!ret.chats.length) {
@@ -494,7 +478,6 @@ io.on("connection", (socket) => {
         str += data;
       });
       res.on("end", () => {
-        console.log(str);
         try {
           let ret = JSON.parse(str).data;
           io.to(`dispute${dispId}`).emit("closeDispResp", "closed");
