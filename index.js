@@ -4,18 +4,28 @@ const http = require("http");
 const https = require("https");
 const httpServer = http.createServer(app);
 const cors = require("cors");
+const gcm = require("node-gcm");
+
+// Set up the sender with your GCM/FCM API key (declare this once for multiple messages)
+const sender = new gcm.Sender(
+  "AAAA2updqmg:APA91bFxt-HSZXYtex5muhvQXR9Q2c_1PkPL1hAfksgW1w2RZZXFNPbqBHroxQHwpP1Haw7xnQggK4THT8p1IGStCOdHW5YN2Go4CWJecVmqJCCvqUi6cnjTHfJb9CE63U5vihiS0Z5S"
+);
+const gmessage = new gcm.Message();
+
 const io = require("socket.io")(httpServer, {
   cors: { origin: "*" },
 });
 app.use(express.json());
-app.use(cors({ origin: "*", allowedHeaders: "Content-Type" }));
+// app.use(cors({ origin: "*", allowedHeaders: "Content-Type" }));
 
 const port = process.env.PORT || 3000;
 
 let rooms = {};
-const api = "api.bluescrow.com";
+const api = "api.pavypay.com";
 const thePath = "/api";
 const apiPort = 443;
+
+const regIds = {};
 
 app.post("/payment", (req, res) => {
   let data = req.body;
@@ -26,6 +36,27 @@ app.post("/payment", (req, res) => {
     })
     .end(JSON.stringify({ data: "success" }));
 });
+
+// app.get("/update-regId", (req, res) => {
+//   regIds = regIds.filter((r) => r != req.query["regId"]);
+//   regIds.push(req.query["regId"]);
+//   res.send();
+// });
+
+const gcmNotif = (user, notif) => {
+  if (regIds[user]) {
+    gmessage.addData({
+      notifs: JSON.stringify(notif),
+    });
+    sender.send(gmessage, { to: regIds[user] }, (err, resjson) => {
+      if (err) {
+        console.log(err);
+      } else {
+        console.log(resjson);
+      }
+    });
+  }
+};
 
 io.on("connection", (socket) => {
   console.log("a user connected");
@@ -136,9 +167,11 @@ io.on("connection", (socket) => {
               "notifications",
               ret.receiver_notification
             );
+            gcmNotif(message.receiver, ret.receiver_notification);
           }
           if (message.admin_notification) {
             io.to("admin").emit("notifications", ret.admin_notification);
+            gcmNotif("admin", ret.admin_notification);
           }
           io.to(`dispute${message.escrow_id}`).emit("sentMsg", {
             message: ret.message,
@@ -156,8 +189,9 @@ io.on("connection", (socket) => {
     req.end();
   });
 
-  socket.on("notifications", (user) => {
+  socket.on("notifications", (user, token) => {
     socket.join(user.username);
+    regIds[user.username] = token;
     const options = {
       host: api,
       port: apiPort,
@@ -180,6 +214,7 @@ io.on("connection", (socket) => {
             }
           }
           socket.emit("notifications", ret.notification);
+          gcmNotif(user.username, ret.notification);
         } catch (e) {
           console.log(e);
         }
@@ -193,6 +228,7 @@ io.on("connection", (socket) => {
 
   socket.on("leaveNotif", (user) => {
     socket.leave(user.username);
+    regIds[user.username] = null;
   });
 
   let prevEscId;
@@ -221,6 +257,7 @@ io.on("connection", (socket) => {
           let ret = JSON.parse(str).data;
           socket.emit("escrowSingle", ret);
           io.to(user.username).emit("notifications", ret.notifications);
+          gcmNotif(user.username, ret.notifications);
         } catch (e) {
           console.log(e);
         }
@@ -251,6 +288,7 @@ io.on("connection", (socket) => {
           let ret = JSON.parse(str).data;
           socket.emit("escrow", ret.escrow);
           io.to(ret.escrow.receiver).emit("notifications", ret.notification);
+          gcmNotif(ret.escrow.receiver, ret.notification);
         } catch (e) {
           console.log(e);
         }
@@ -282,6 +320,7 @@ io.on("connection", (socket) => {
           let ret = JSON.parse(str).data;
           io.to(`escSingle${ret.escrow.id}`).emit("escrowSingle", ret);
           io.to(ret.escrow.buyer).emit("notifications", ret.notification);
+          gcmNotif(ret.escrow.buyer, ret.notification);
         } catch (e) {
           console.log(e);
         }
@@ -314,8 +353,10 @@ io.on("connection", (socket) => {
           io.to(`escSingle${ret.escrow.id}`).emit("escrowSingle", ret);
           if (user.username == ret.escrow.buyer) {
             io.to(ret.escrow.seller).emit("notifications", ret.notification);
+            gcmNotif(ret.escrow.seller, ret.notification);
           } else {
             io.to(ret.escrow.buyer).emit("notifications", ret.notification);
+            gcmNotif(ret.escrow.buyer, ret.notification);
           }
         } catch (e) {
           console.log(e);
@@ -347,6 +388,7 @@ io.on("connection", (socket) => {
           // socket.emit("cancelTimeRes", ret.escrow);
           io.to(`escSingle${ret.escrow.id}`).emit("escrowSingle", ret);
           io.to(ret.escrow.buyer).emit("notifications", ret.notification);
+          gcmNotif(ret.escrow.buyer, ret.notification);
         } catch (e) {
           console.log(e);
         }
@@ -376,6 +418,7 @@ io.on("connection", (socket) => {
           // socket.emit("acceptTimeRes", ret.escrow);
           io.to(`escSingle${ret.escrow.id}`).emit("escrowSingle", ret);
           io.to(ret.escrow.seller).emit("notifications", ret.notification);
+          gcmNotif(ret.escrow.seller, ret.notification);
         } catch (e) {
           console.log(e);
         }
@@ -406,8 +449,10 @@ io.on("connection", (socket) => {
           io.to(`escSingle${ret.escrow.id}`).emit("escrowSingle", ret);
           if (role != "cancelled") {
             io.to(ret.escrow.initiator).emit("notifications", ret.notification);
+            gcmNotif(ret.escrow.initiator, ret.notification);
           } else {
             io.to(ret.escrow.receiver).emit("notifications", ret.notification);
+            gcmNotif(ret.escrow.receiver, ret.notification);
           }
         } catch (e) {
           console.log(e);
@@ -487,11 +532,13 @@ io.on("connection", (socket) => {
               "notifications",
               ret.receiver_notification
             );
+            gcmNotif(ret.escrow.seller, ret.receiver_notification);
           } else {
             io.to(ret.escrow.buyer).emit(
               "notifications",
               ret.receiver_notification
             );
+            gcmNotif(ret.escrow.buyer, ret.receiver_notification);
           }
         } catch (e) {
           console.log(e);
