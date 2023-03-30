@@ -10,7 +10,10 @@ const gcm = require("node-gcm");
 const sender = new gcm.Sender(
   "AAAA2updqmg:APA91bFxt-HSZXYtex5muhvQXR9Q2c_1PkPL1hAfksgW1w2RZZXFNPbqBHroxQHwpP1Haw7xnQggK4THT8p1IGStCOdHW5YN2Go4CWJecVmqJCCvqUi6cnjTHfJb9CE63U5vihiS0Z5S"
 );
-const gmessage = new gcm.Message();
+const gmessage = new gcm.Message({
+  mutableContent: true,
+  priority: "high",
+});
 
 const io = require("socket.io")(httpServer, {
   cors: { origin: "*" },
@@ -37,6 +40,43 @@ app.post("/payment", (req, res) => {
     .end(JSON.stringify({ data: "success" }));
 });
 
+app.post("/transfer", (req, res) => {
+  const options = {
+    host: api,
+    port: apiPort,
+    path: `${thePath}/user/transfer/create`,
+    headers: {
+      Authorization: req.headers["Authorization"],
+      "Content-Type": "application/json",
+    },
+    method: "POST",
+  };
+  const hreq = https.request(options, (hres) => {
+    let str = "";
+    hres.on("data", (data) => {
+      str += data;
+    });
+    hres.on("end", () => {
+      try {
+        let ret = JSON.parse(str).data;
+        io.to(ret.receiver.username).emit("transfer", ret.receiver);
+        res
+          .writeHead(200, {
+            "Content-Type": "application/json",
+          })
+          .end(JSON.stringify({ data: ret.sender }));
+      } catch (e) {
+        console.log(e);
+      }
+    });
+  });
+  hreq.write(req.body);
+  hreq.on("error", (e) => {
+    console.log(e);
+  });
+  hreq.end();
+});
+
 // app.get("/update-regId", (req, res) => {
 //   regIds = regIds.filter((r) => r != req.query["regId"]);
 //   regIds.push(req.query["regId"]);
@@ -45,16 +85,36 @@ app.post("/payment", (req, res) => {
 
 const gcmNotif = (user, notif) => {
   if (regIds[user]) {
-    gmessage.addData({
-      notifs: JSON.stringify(notif),
-    });
-    sender.send(gmessage, { to: regIds[user] }, (err, resjson) => {
-      if (err) {
-        console.log(err);
-      } else {
-        console.log(resjson);
-      }
-    });
+    for (var n of notif) {
+      gmessage.addNotification({
+        badge: n.type_id,
+        title: n.title,
+        body: n.contents,
+      });
+      gmessage.addData({
+        content: JSON.stringify({
+          id: n.id,
+          badge: n.type_id,
+          channelKey: n.type == "escrow" ? "escrow_channel" : "dispute_channel",
+          largeIcon:
+            n.sender_photo ||
+            "https://res.cloudinary.com/bluescrow/image/upload/v1672451195/assets/picture_bieyjd.png",
+          roundedLargeIcon: true,
+          wakeUpScreen: true,
+          notificationLayout: "BigText",
+          payload: {
+            id: n.type_id.toString(),
+          },
+        }),
+      });
+      sender.send(gmessage, { to: regIds[user] }, (err, resjson) => {
+        if (err) {
+          console.log(err);
+        } else {
+          console.log(resjson);
+        }
+      });
+    }
   }
 };
 
@@ -177,6 +237,9 @@ io.on("connection", (socket) => {
             message: ret.message,
             escrow: ret.escrow,
           });
+          io.to(`escSingle${message.escrow_id}`).emit("escrowSingle", {
+            escrow: ret.escrow,
+          });
         } catch (e) {
           console.log(e);
         }
@@ -191,7 +254,9 @@ io.on("connection", (socket) => {
 
   socket.on("notifications", (user, token) => {
     socket.join(user.username);
-    regIds[user.username] = token;
+    if (token) {
+      regIds[user.username] = token;
+    }
     const options = {
       host: api,
       port: apiPort,
@@ -470,7 +535,7 @@ io.on("connection", (socket) => {
     const options = {
       host: api,
       port: apiPort,
-      path: `${thePath}/user/disputes/single/${dispId}/10/1`,
+      path: `${thePath}/user/disputes/single/${dispId}/20/1`,
       headers: { Authorization: `Bearer ${user.token}` },
     };
     const req = https.request(options, (res) => {
