@@ -5,6 +5,20 @@ const https = require("https");
 const httpServer = http.createServer(app);
 const cors = require("cors");
 const gcm = require("node-gcm");
+const mysql = require("mysql");
+
+const con = mysql.createConnection({
+  host: "localhost",
+  user: "root",
+  password: "",
+  database: "nodedb",
+});
+
+con.connect((err) => {
+  if (err) {
+    console.log(err);
+  }
+});
 
 // Set up the sender with your GCM/FCM API key (declare this once for multiple messages)
 const sender = new gcm.Sender(
@@ -46,7 +60,7 @@ app.post("/transfer", (req, res) => {
     port: apiPort,
     path: `${thePath}/user/transfer/create`,
     headers: {
-      Authorization: req.headers["Authorization"],
+      Authorization: req.header("Authorization"),
       "Content-Type": "application/json",
     },
     method: "POST",
@@ -59,7 +73,7 @@ app.post("/transfer", (req, res) => {
     hres.on("end", () => {
       try {
         let ret = JSON.parse(str).data;
-        io.to(ret.receiver.username).emit("transfer", ret.receiver);
+        io.to(ret.receiver.username).emit("transfer", ret);
         res
           .writeHead(200, {
             "Content-Type": "application/json",
@@ -70,7 +84,7 @@ app.post("/transfer", (req, res) => {
       }
     });
   });
-  hreq.write(req.body);
+  hreq.write(JSON.stringify(req.body));
   hreq.on("error", (e) => {
     console.log(e);
   });
@@ -84,38 +98,66 @@ app.post("/transfer", (req, res) => {
 // });
 
 const gcmNotif = (user, notif) => {
-  if (regIds[user]) {
-    for (var n of notif) {
-      gmessage.addNotification({
-        badge: n.type_id,
-        title: n.title,
-        body: n.contents,
-      });
-      gmessage.addData({
-        content: JSON.stringify({
-          id: n.id,
-          badge: n.type_id,
-          channelKey: n.type == "escrow" ? "escrow_channel" : "dispute_channel",
-          largeIcon:
-            n.sender_photo ||
-            "https://res.cloudinary.com/bluescrow/image/upload/v1672451195/assets/picture_bieyjd.png",
-          roundedLargeIcon: true,
-          wakeUpScreen: true,
-          notificationLayout: "BigText",
-          payload: {
-            id: n.type_id.toString(),
-          },
-        }),
-      });
-      sender.send(gmessage, { to: regIds[user] }, (err, resjson) => {
-        if (err) {
-          console.log(err);
-        } else {
-          console.log(resjson);
+  let sql = `SELECT * FROM users WHERE username = '${user}'`;
+  con.query(sql, (err, sres) => {
+    if (!sres.length) return;
+    let deviceId = sres[0].device_id;
+    let sentNotif = sres[0].sent_notification
+      ? JSON.parse(sres[0].sent_notification)
+      : [];
+    if (deviceId) {
+      let toSend = [];
+      for (let n of notif) {
+        let exist = false;
+        for (let ino of sentNotif) {
+          if (n.id == ino.id) {
+            exist = true;
+            break;
+          }
         }
-      });
+        if (!exist) {
+          toSend.push(n);
+        }
+      }
+      for (var n of toSend) {
+        gmessage.addNotification({
+          badge: n.type_id,
+          title: n.title,
+          body: n.contents,
+        });
+        gmessage.addData({
+          content: JSON.stringify({
+            id: n.id,
+            badge: n.type_id,
+            channelKey:
+              n.type == "escrow" ? "escrow_channel" : "dispute_channel",
+            largeIcon:
+              n.sender_photo ||
+              "https://res.cloudinary.com/bluescrow/image/upload/v1672451195/assets/picture_bieyjd.png",
+            roundedLargeIcon: true,
+            wakeUpScreen: true,
+            notificationLayout: "BigText",
+            payload: {
+              type_id: n.type_id.toString(),
+            },
+          }),
+        });
+        sender.send(gmessage, { to: deviceId }, (err, resjson) => {
+          if (err) {
+            console.log(err);
+          } else {
+            console.log(resjson);
+            let usql = `UPDATE users SET sent_notification = '${JSON.stringify(
+              toSend
+            )}' WHERE username = '${user}'`;
+            con.query(usql, (err, ures) => {
+              console.log(`updated sent notification for ${user}`);
+            });
+          }
+        });
+      }
     }
-  }
+  });
 };
 
 io.on("connection", (socket) => {
@@ -154,55 +196,55 @@ io.on("connection", (socket) => {
   };
 
   socket.on("message", (message, user) => {
-    if (message.receiver_one) {
-      if (!userInRoom(`dispute${message.escrow_id}`, message.receiver_one)) {
-        message.receiver_one_notification = 1;
-        message.receiver_one_seen = 0;
-      } else {
-        message.receiver_one_notification = 0;
-        message.receiver_one_seen = 1;
-      }
-      if (!userInRoom(`dispute${message.escrow_id}`, message.receiver_two)) {
-        message.receiver_two_notification = 1;
-        message.receiver_two_seen = 0;
-      } else {
-        message.receiver_two_notification = 0;
-        message.receiver_two_seen = 1;
-      }
-      if (socket.adapter.rooms.has(message.receiver_one)) {
-        message.receiver_one_delivered = 1;
-      } else {
-        message.receiver_one_delivered = 0;
-      }
-      if (socket.adapter.rooms.has(message.receiver_two)) {
-        message.receiver_two_delivered = 1;
-      } else {
-        message.receiver_two_delivered = 0;
-      }
+    // if (message.receiver_one) {
+    //   if (!userInRoom(`dispute${message.escrow_id}`, message.receiver_one)) {
+    //     message.receiver_one_notification = 1;
+    //     message.receiver_one_seen = 0;
+    //   } else {
+    //     message.receiver_one_notification = 0;
+    //     message.receiver_one_seen = 1;
+    //   }
+    //   if (!userInRoom(`dispute${message.escrow_id}`, message.receiver_two)) {
+    //     message.receiver_two_notification = 1;
+    //     message.receiver_two_seen = 0;
+    //   } else {
+    //     message.receiver_two_notification = 0;
+    //     message.receiver_two_seen = 1;
+    //   }
+    //   if (socket.adapter.rooms.has(message.receiver_one)) {
+    //     message.receiver_one_delivered = 1;
+    //   } else {
+    //     message.receiver_one_delivered = 0;
+    //   }
+    //   if (socket.adapter.rooms.has(message.receiver_two)) {
+    //     message.receiver_two_delivered = 1;
+    //   } else {
+    //     message.receiver_two_delivered = 0;
+    //   }
+    // } else {
+    if (!userInRoom(`dispute${message.escrow_id}`, message.receiver)) {
+      message.notification = 1;
+      message.receiver_seen = 0;
     } else {
-      if (!userInRoom(`dispute${message.escrow_id}`, message.receiver)) {
-        message.notification = 1;
-        message.receiver_seen = 0;
-      } else {
-        message.notification = 0;
-        message.receiver_seen = 1;
-      }
-      if (!userInRoom(`dispute${message.escrow_id}`, "admin")) {
-        message.admin_notification = 1;
-      } else {
-        message.admin_notification = 0;
-      }
-      if (socket.adapter.rooms.has(message.receiver)) {
-        message.receiver_delivered = 1;
-      } else {
-        message.receiver_delivered = 0;
-      }
-      if (socket.adapter.rooms.has("admin")) {
-        message.admin_delivered = 1;
-      } else {
-        message.admin_delivered = 0;
-      }
+      message.notification = 0;
+      message.receiver_seen = 1;
     }
+    if (!userInRoom(`dispute${message.escrow_id}`, "admin")) {
+      message.admin_notification = 1;
+    } else {
+      message.admin_notification = 0;
+    }
+    if (socket.adapter.rooms.has(message.receiver)) {
+      message.receiver_delivered = 1;
+    } else {
+      message.receiver_delivered = 0;
+    }
+    if (socket.adapter.rooms.has("admin")) {
+      message.admin_delivered = 1;
+    } else {
+      message.admin_delivered = 0;
+    }
+    // }
 
     const options = {
       host: api,
@@ -255,6 +297,25 @@ io.on("connection", (socket) => {
   socket.on("notifications", (user, token) => {
     socket.join(user.username);
     if (token) {
+      let sql = `UPDATE users SET device_id = '${token}' WHERE username = '${user.username}'`;
+      con.query(sql, (serr, res) => {
+        if (serr) {
+          console.log(serr);
+          return;
+        }
+        if (!res.affectedRows) {
+          let isql = `INSERT INTO users (username, device_id) VALUES ('${user.username}', '${token}')`;
+          con.query(isql, (ierr, ires) => {
+            if (ierr) {
+              console.log(ierr);
+              return;
+            }
+            console.log(`inserted ${user.username}`);
+          });
+          return;
+        }
+        console.log(`updated ${user.username}`);
+      });
       regIds[user.username] = token;
     }
     const options = {
@@ -293,7 +354,7 @@ io.on("connection", (socket) => {
 
   socket.on("leaveNotif", (user) => {
     socket.leave(user.username);
-    regIds[user.username] = null;
+    // regIds[user.username] = null;
   });
 
   let prevEscId;
