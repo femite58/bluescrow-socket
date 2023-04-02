@@ -102,60 +102,58 @@ const gcmNotif = (user, notif) => {
   con.query(sql, (err, sres) => {
     if (!sres.length) return;
     let deviceId = sres[0].device_id;
-    let sentNotif = sres[0].sent_notification
-      ? JSON.parse(sres[0].sent_notification)
-      : [];
-    if (deviceId) {
+    let sentNotif = sres[0].sent_notification;
+    if (deviceId && sentNotif != JSON.stringify(notif)) {
       let toSend = [];
-      for (let n of notif) {
-        let exist = false;
-        for (let ino of sentNotif) {
-          if (n.id == ino.id) {
-            exist = true;
-            break;
-          }
+      // for (let n of notif) {
+      //   let exist = false;
+      //   for (let ino of sentNotif) {
+      //     if (n.id == ino.id) {
+      //       exist = true;
+      //       break;
+      //     }
+      //   }
+      //   if (!exist) {
+      //     toSend.push(n);
+      //   }
+      // }
+      // for (var n of toSend) {
+      //   gmessage.addNotification({
+      //     badge: n.type_id,
+      //     title: n.title,
+      //     body: n.contents,
+      //   });
+      gmessage.addData({
+        notifs: JSON.stringify(notif),
+        // content: JSON.stringify({
+        //   id: n.id,
+        //   badge: n.type_id,
+        //   channelKey: n.type == "escrow" ? "escrow_channel" : "dispute_channel",
+        //   largeIcon:
+        //     n.sender_photo ||
+        //     "https://res.cloudinary.com/bluescrow/image/upload/v1672451195/assets/picture_bieyjd.png",
+        //   roundedLargeIcon: true,
+        //   wakeUpScreen: true,
+        //   notificationLayout: "BigText",
+        //   payload: {
+        //     type_id: n.type_id.toString(),
+        //   },
+        // }),
+      });
+      sender.send(gmessage, { to: deviceId }, (err, resjson) => {
+        if (err) {
+          console.log(err);
+        } else {
+          console.log(resjson);
+          let usql = `UPDATE users SET sent_notification = '${JSON.stringify(
+            notif
+          )}' WHERE username = '${user}'`;
+          con.query(usql, (err, ures) => {
+            console.log(`updated sent notification for ${user}`);
+          });
         }
-        if (!exist) {
-          toSend.push(n);
-        }
-      }
-      for (var n of toSend) {
-        gmessage.addNotification({
-          badge: n.type_id,
-          title: n.title,
-          body: n.contents,
-        });
-        gmessage.addData({
-          content: JSON.stringify({
-            id: n.id,
-            badge: n.type_id,
-            channelKey:
-              n.type == "escrow" ? "escrow_channel" : "dispute_channel",
-            largeIcon:
-              n.sender_photo ||
-              "https://res.cloudinary.com/bluescrow/image/upload/v1672451195/assets/picture_bieyjd.png",
-            roundedLargeIcon: true,
-            wakeUpScreen: true,
-            notificationLayout: "BigText",
-            payload: {
-              type_id: n.type_id.toString(),
-            },
-          }),
-        });
-        sender.send(gmessage, { to: deviceId }, (err, resjson) => {
-          if (err) {
-            console.log(err);
-          } else {
-            console.log(resjson);
-            let usql = `UPDATE users SET sent_notification = '${JSON.stringify(
-              toSend
-            )}' WHERE username = '${user}'`;
-            con.query(usql, (err, ures) => {
-              console.log(`updated sent notification for ${user}`);
-            });
-          }
-        });
-      }
+      });
+      //   }
     }
   });
 };
