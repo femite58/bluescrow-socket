@@ -47,6 +47,8 @@ const regIds = {};
 app.post("/payment", (req, res) => {
   let data = req.body;
   io.to(data.username).emit("deposit", data.data);
+  let msg = `You have successfully funded your wallet with NGN${data.data["amount"]}`;
+  gcmNotif(data.username, msg, "deposit");
   res
     .writeHead(200, {
       "Content-Type": "application/json",
@@ -74,6 +76,15 @@ app.post("/transfer", (req, res) => {
       try {
         let ret = JSON.parse(str).data;
         io.to(ret.receiver.username).emit("transfer", ret);
+        let topTrans = ret["receiver"]["topTransaction"];
+        topTrans.sort(
+          (a, b) => Date.parse(b["created_at"]) - Date.parse(a["created_at"])
+        );
+        var depamnt = +topTrans[0]["amount"];
+        msg = `${ret["sender"]["username"].replace(/./, (m) =>
+          m.toUpperCase()
+        )} have credited your wallet with NGN${depamnt}`;
+        gcmNotif(ret.receiver.username, msg, "transfer");
         res
           .writeHead(200, {
             "Content-Type": "application/json",
@@ -97,49 +108,14 @@ app.post("/transfer", (req, res) => {
 //   res.send();
 // });
 
-const gcmNotif = (user, notif) => {
+const gcmNotif = (user, notif, key = "notif") => {
   let sql = `SELECT * FROM users WHERE username = '${user}'`;
   con.query(sql, (err, sres) => {
     if (!sres.length) return;
     let deviceId = sres[0].device_id;
     let sentNotif = sres[0].sent_notification;
-    if (deviceId && sentNotif != JSON.stringify(notif)) {
-      let toSend = [];
-      // for (let n of notif) {
-      //   let exist = false;
-      //   for (let ino of sentNotif) {
-      //     if (n.id == ino.id) {
-      //       exist = true;
-      //       break;
-      //     }
-      //   }
-      //   if (!exist) {
-      //     toSend.push(n);
-      //   }
-      // }
-      // for (var n of toSend) {
-      //   gmessage.addNotification({
-      //     badge: n.type_id,
-      //     title: n.title,
-      //     body: n.contents,
-      //   });
-      gmessage.addData({
-        notifs: JSON.stringify(notif),
-        // content: JSON.stringify({
-        //   id: n.id,
-        //   badge: n.type_id,
-        //   channelKey: n.type == "escrow" ? "escrow_channel" : "dispute_channel",
-        //   largeIcon:
-        //     n.sender_photo ||
-        //     "https://res.cloudinary.com/bluescrow/image/upload/v1672451195/assets/picture_bieyjd.png",
-        //   roundedLargeIcon: true,
-        //   wakeUpScreen: true,
-        //   notificationLayout: "BigText",
-        //   payload: {
-        //     type_id: n.type_id.toString(),
-        //   },
-        // }),
-      });
+    const sendNotif = (data) => {
+      gmessage.addData(data);
       sender.send(gmessage, { to: deviceId }, (err, resjson) => {
         if (err) {
           console.log(err);
@@ -153,7 +129,19 @@ const gcmNotif = (user, notif) => {
           });
         }
       });
-      //   }
+    };
+    if (deviceId) {
+      if (key == "notif") {
+        for (let n of notif) {
+          let data = {};
+          data[key] = JSON.stringify(n);
+          sendNotif(data);
+        }
+      } else {
+        let data = {};
+        data[key] = JSON.stringify(notif);
+        sendNotif(data);
+      }
     }
   });
 };
