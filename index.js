@@ -102,6 +102,42 @@ app.post("/transfer", (req, res) => {
   hreq.end();
 });
 
+app.post("/notification-delivered", (req, res) => {
+  let [user, token] = req.body;
+  const options = {
+    host: api,
+    port: apiPort,
+    path: `${thePath}/user/header-notification`,
+    headers: { Authorization: `Bearer ${user.token}` },
+  };
+  const hreq = https.request(options, (hres) => {
+    let str = "";
+    hres.on("data", (data) => {
+      str += data;
+    });
+    hres.on("end", () => {
+      try {
+        let ret = JSON.parse(str).data;
+        let disputes = ret.disputes;
+        // loop over the disputes to emit messages to all in its room
+        //   console.log(disputes);
+        if (disputes) {
+          for (let disp of disputes) {
+            io.to(`dispute${disp.escrow.id}`).emit("messages", disp);
+          }
+        }
+        res.writeHead(200).end();
+      } catch (e) {
+        console.log(e);
+      }
+    });
+  });
+  hreq.on("error", (e) => {
+    console.log(e);
+  });
+  hreq.end();
+});
+
 // app.get("/update-regId", (req, res) => {
 //   regIds = regIds.filter((r) => r != req.query["regId"]);
 //   regIds.push(req.query["regId"]);
