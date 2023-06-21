@@ -138,11 +138,46 @@ app.post("/notification-delivered", (req, res) => {
   hreq.end();
 });
 
+app.post("/general-notification", (req, res) => {
+  let { users, notif } = req.body;
+  generalNotif(users, notif);
+  res
+    .writeHead(200, {
+      "Content-Type": "application/json",
+    })
+    .end(JSON.stringify({ data: "success" }));
+});
+
 // app.get("/update-regId", (req, res) => {
 //   regIds = regIds.filter((r) => r != req.query["regId"]);
 //   regIds.push(req.query["regId"]);
 //   res.send();
 // });
+
+const generalNotif = (users, notif) => {
+  let sql;
+  if (users.length) {
+    sql = `SELECT * FROM users WHERE username IN (${users
+      .map((u) => `'${u}'`)
+      .join(",")})`;
+  } else {
+    sql = `SELECT * FROM users`;
+  }
+  con.query(sql, (err, res) => {
+    if (!res.length) return;
+    let deviceIds = res.map((u) => u.device_id);
+    let data = {};
+    data["general"] = JSON.stringify(notif);
+    gmessage.addData(data);
+    sender.send(gmessage, { registrationIds: deviceIds }, (gerr, gres) => {
+      if (gerr) {
+        console.log(gerr);
+      } else {
+        console.log(gres);
+      }
+    });
+  });
+};
 
 const gcmNotif = (user, notif, key = "notif") => {
   let sql = `SELECT * FROM users WHERE username = '${user}'`;
@@ -592,8 +627,19 @@ io.on("connection", (socket) => {
       });
       res.on("end", () => {
         try {
-          let ret = JSON.parse(str).data;
+          let raw = JSON.parse(str);
+          let ret = raw.data || {
+            error:
+              "This transaction activation fails due to an insufficient fund on your buyer's wallet",
+          };
           socket.emit("escActionRes", ret);
+          if (!raw.data) {
+            generalNotif([escrow.initiator], {
+              title: "Escrow Acceptance Error",
+              content: `Your escrow transaction with the escrow id ${escrow.ref_no} cannot be accepted by your seller ${escrow.seller} at the moment due to insufficient fund in your wallet. Please fund your wallet to enable successful acceptance by your seller.`,
+            });
+            return;
+          }
           io.to(`escSingle${ret.escrow.id}`).emit("escrowSingle", ret);
           if (role != "cancelled") {
             io.to(ret.escrow.initiator).emit("notifications", ret.notification);
