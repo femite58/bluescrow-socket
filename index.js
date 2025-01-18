@@ -4,8 +4,15 @@ const http = require("http");
 const https = require("https");
 const httpServer = http.createServer(app);
 const cors = require("cors");
-const gcm = require("node-gcm");
 const mysql = require("mysql");
+const admin = require("firebase-admin");
+
+// Initialize the Firebase Admin SDK
+const serviceAccount = require("./googleserviceaccountkey.json");
+
+admin.initializeApp({
+  credential: admin.credential.cert(serviceAccount),
+});
 
 const con = mysql.createConnection({
   host: "localhost",
@@ -18,15 +25,6 @@ con.connect((err) => {
   if (err) {
     console.log(err);
   }
-});
-
-// Set up the sender with your GCM/FCM API key (declare this once for multiple messages)
-const sender = new gcm.Sender(
-  "AAAA2updqmg:APA91bFxt-HSZXYtex5muhvQXR9Q2c_1PkPL1hAfksgW1w2RZZXFNPbqBHroxQHwpP1Haw7xnQggK4THT8p1IGStCOdHW5YN2Go4CWJecVmqJCCvqUi6cnjTHfJb9CE63U5vihiS0Z5S"
-);
-const gmessage = new gcm.Message({
-  mutableContent: true,
-  priority: "high",
 });
 
 const io = require("socket.io")(httpServer, {
@@ -163,19 +161,32 @@ const generalNotif = (users, notif) => {
   } else {
     sql = `SELECT * FROM users`;
   }
-  con.query(sql, (err, res) => {
+  con.query(sql, async (err, res) => {
     if (!res.length) return;
     let deviceIds = res.map((u) => u.device_id);
     let data = {};
     data["general"] = JSON.stringify(notif);
-    gmessage.addData(data);
-    sender.send(gmessage, { registrationIds: deviceIds }, (gerr, gres) => {
-      if (gerr) {
-        console.log(gerr);
-      } else {
-        console.log(gres);
-      }
-    });
+    const payload = {
+      data: {
+        ...data, // Add your custom data here
+      },
+      android: {
+        priority: "high", // Set priority for Android devices
+      },
+    };
+
+    try {
+      const response = await admin.messaging().sendMulticast({
+        tokens: deviceIds, // Array of registration tokens
+        ...payload,
+      });
+
+      console.log("Notifications sent:", response.successCount);
+      console.log("Failures:", response.failureCount);
+      console.log("Details:", response.responses);
+    } catch (error) {
+      console.error("Error sending notifications:", error);
+    }
   });
 };
 
@@ -184,22 +195,29 @@ const gcmNotif = (user, notif, key = "notif") => {
   con.query(sql, (err, sres) => {
     if (!sres.length) return;
     let deviceId = sres[0].device_id;
-    let sentNotif = sres[0].sent_notification;
-    const sendNotif = (data) => {
-      gmessage.addData(data);
-      sender.send(gmessage, { to: deviceId }, (err, resjson) => {
-        if (err) {
-          console.log(err);
-        } else {
-          console.log(resjson);
-          let usql = `UPDATE users SET sent_notification = '${JSON.stringify(
-            notif
-          )}' WHERE username = '${user}'`;
-          con.query(usql, (err, ures) => {
-            console.log(`updated sent notification for ${user}`);
-          });
-        }
-      });
+    const sendNotif = async (data) => {
+      const payload = {
+        data: {
+          ...data, // Add your custom data here
+        },
+        android: {
+          priority: "high", // Set priority for Android devices
+        },
+        token: deviceId,
+      };
+
+      try {
+        const response = await admin.messaging().send(payload);
+        console.log("Notification sent successfully:", response);
+        let usql = `UPDATE users SET sent_notification = '${JSON.stringify(
+          notif
+        )}' WHERE username = '${user}'`;
+        con.query(usql, (err, ures) => {
+          console.log(`updated sent notification for ${user}`);
+        });
+      } catch (error) {
+        console.error("Error sending notification:", error);
+      }
     };
     if (deviceId) {
       if (key == "notif") {
